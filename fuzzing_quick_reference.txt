@@ -1,0 +1,221 @@
+================================================================================
+GO-LIBP2P FUZZING CANDIDATES - QUICK REFERENCE CHECKLIST
+================================================================================
+
+TIER 1: CRITICAL (Start Here)
+================================================================================
+
+[  ] 1. readAllIDMessages + consumeMessage
+    Location: /home/user/go-libp2p/p2p/protocol/identify/id.go (lines 564, 730)
+    Type: Protobuf message parsing + multiaddr parsing
+    Key insight: Merges up to 10 protobuf messages, parses untrusted multiaddrs
+    Fuzz inputs: Random bytes for protobuf, varying multiaddr formats
+    Status: NO EXISTING FUZZ TEST
+
+[  ] 2. readHandshakeMessage + handleRemoteHandshakePayload
+    Location: /home/user/go-libp2p/p2p/security/noise/handshake.go (lines 194, 249)
+    Type: Crypto handshake + protobuf + key deserialization + signature verification
+    Key insight: Multi-layer deserialization with signature checks
+    Fuzz inputs: Random bytes for proto.Unmarshal, various key types
+    Status: NO EXISTING FUZZ TEST
+
+[  ] 3. PubKeyFromCertChain
+    Location: /home/user/go-libp2p/p2p/security/tls/crypto.go (line 157)
+    Type: X.509 + ASN.1 + libp2p key deserialization + signature verification
+    Key insight: Complex deserialization chain with cryptographic validation
+    Fuzz inputs: Malformed X.509 certs, invalid extensions, bad ASN.1
+    Status: NO EXISTING FUZZ TEST
+
+TIER 2: HIGH PRIORITY
+================================================================================
+
+[  ] 4. encrypt/decrypt
+    Location: /home/user/go-libp2p/p2p/security/noise/crypto.go (lines 22, 41)
+    Type: ChaCha20-Poly1305 cipher operations
+    Key insight: Crypto boundary - important for confidentiality and authenticity
+    Fuzz inputs: Random ciphertext, tampered auth tags, edge cases
+    Status: NO EXISTING FUZZ TEST
+
+[  ] 5. Read/Write + readNextInsecureMsgLen
+    Location: /home/user/go-libp2p/p2p/security/noise/rw.go (lines 26, 91, 132, 146)
+    Type: Network I/O + length prefix parsing + buffer management
+    Key insight: Protocol framing - critical for message boundaries
+    Fuzz inputs: 2-byte length values, incomplete reads, oversized messages
+    Status: NO EXISTING FUZZ TEST
+
+[  ] 6. UnmarshalPublicKey + UnmarshalPrivateKey
+    Location: /home/user/go-libp2p/core/crypto/key.go (lines 123, 182)
+    Type: Protobuf key deserialization + type dispatch
+    Key insight: Parses untrusted key material with type-based dispatch
+    Fuzz inputs: Invalid key types, malformed protobuf, empty/null keys
+    Status: NO EXISTING FUZZ TEST
+
+[  ] 7. ConsumeEnvelope
+    Location: /home/user/go-libp2p/core/record/envelope.go (line 110)
+    Type: Signed message parsing + protobuf + signature validation
+    Key insight: Used for DHT records, peer records, etc.
+    Fuzz inputs: Random protobuf, invalid signatures, domain variations
+    Status: NO EXISTING FUZZ TEST
+
+TIER 3: MEDIUM PRIORITY
+================================================================================
+
+[  ] 8. Peer ID deserialization (Unmarshal, UnmarshalJSON, UnmarshalText)
+    Location: /home/user/go-libp2p/core/peer/peer_serde.go (lines 33, 51, 66)
+    Type: Multibase decoding + ID validation
+    Key insight: Used in peer discovery and gossip
+    Fuzz inputs: Invalid multibase, malformed peer IDs
+    Status: NO EXISTING FUZZ TEST
+
+[  ] 9. PeerRecord.UnmarshalRecord
+    Location: /home/user/go-libp2p/core/peer/record.go
+    Type: Protobuf deserialization for peer records
+    Key insight: Part of signed record parsing
+    Fuzz inputs: Random protobuf variations
+    Status: NO EXISTING FUZZ TEST
+
+[  ] 10. ReadMsg (AutoNat v2)
+    Location: /home/user/go-libp2p/p2p/protocol/autonatv2/msg_reader.go (line 21)
+    Type: Varint decoding + message size validation
+    Key insight: Parses message size with potential integer overflow
+    Fuzz inputs: Various varint encodings, oversized messages
+    Status: NO EXISTING FUZZ TEST
+
+[  ] 11. PeerToPeerInfoV2
+    Location: /home/user/go-libp2p/p2p/protocol/circuitv2/util/pbconv.go (line 12)
+    Type: Protobuf peer parsing + multiaddr parsing (multiple)
+    Key insight: Parses relay protocol messages with address iteration
+    Fuzz inputs: Invalid peer IDs, malformed multiaddrs in loop
+    Status: NO EXISTING FUZZ TEST
+
+[  ] 12. DecodeV1PSK
+    Location: /home/user/go-libp2p/core/pnet/codec.go (line 40)
+    Type: PSK file format parsing
+    Key insight: Parses private swarm protection keys
+    Fuzz inputs: Malformed PSK files, invalid headers
+    Status: NO EXISTING FUZZ TEST
+
+TIER 4: REFERENCE (Already Has Tests)
+================================================================================
+
+[X] 13. FuzzClash
+    Location: /home/user/go-libp2p/p2p/transport/tcpreuse/demultiplex_test.go
+    Status: ALREADY FUZZING
+
+[X] 14. FuzzInterspersedHex + FuzzInterspersedHexASCII
+    Location: /home/user/go-libp2p/p2p/transport/webrtc/hex_test.go
+    Status: ALREADY FUZZING
+
+================================================================================
+IMPLEMENTATION PRIORITIES
+================================================================================
+
+PHASE 1 (Week 1): Critical Security Functions
+  - readAllIDMessages + consumeMessage
+  - readHandshakeMessage + handleRemoteHandshakePayload
+  - PubKeyFromCertChain
+
+PHASE 2 (Week 2): Cryptographic Boundaries
+  - encrypt/decrypt
+  - Read/Write + readNextInsecureMsgLen
+  - UnmarshalPublicKey + UnmarshalPrivateKey
+
+PHASE 3 (Week 3): Protocol Records & Extended Coverage
+  - ConsumeEnvelope
+  - Peer ID deserialization
+  - ReadMsg (AutoNat v2)
+  - PeerToPeerInfoV2
+
+PHASE 4 (Week 4): Additional Coverage & Polish
+  - PeerRecord.UnmarshalRecord
+  - DecodeV1PSK
+  - Property-based tests
+  - Corpus minimization
+
+================================================================================
+TESTING PATTERNS
+================================================================================
+
+PATTERN A - Simple Bytes Input
+  func FuzzXXX(f *testing.F) {
+      f.Fuzz(func(t *testing.T, data []byte) {
+          result, err := FunctionUnderTest(data)
+          // Verify no panic, handle error gracefully
+      })
+  }
+
+PATTERN B - Protobuf Input
+  func FuzzXXX(f *testing.F) {
+      f.Fuzz(func(t *testing.T, data []byte) {
+          msg := &pb.SomeMessage{}
+          if err := proto.Unmarshal(data, msg); err == nil {
+              FunctionUnderTest(msg)
+          }
+      })
+  }
+
+PATTERN C - Multi-input State Machine
+  func FuzzXXX(f *testing.F) {
+      f.Fuzz(func(t *testing.T, input1, input2 []byte) {
+          state := setupState(input1)
+          result, err := StateMachineFunc(state, input2)
+          verifyStateInvariant(state)
+      })
+  }
+
+PATTERN D - Property-Based (Roundtrip)
+  func FuzzXXX(f *testing.F) {
+      f.Fuzz(func(t *testing.T, data []byte) {
+          obj, err := Unmarshal(data)
+          if err == nil {
+              marshaled, _ := Marshal(obj)
+              obj2, _ := Unmarshal(marshaled)
+              // Verify obj == obj2
+          }
+      })
+  }
+
+================================================================================
+KEY METRICS & GOALS
+================================================================================
+
+Code Coverage:
+  - Target: >90% line coverage for all identified functions
+  - Current gap: ~25 functions with 0% coverage
+
+Vulnerability Classes to Test:
+  - Buffer overflows / out-of-bounds access
+  - Integer overflows (especially in varint, length parsing)
+  - Type confusion attacks (protobuf dispatching)
+  - Signature verification bypass
+  - Authentication tag tampering (AEAD)
+  - DoS through resource exhaustion
+  - Stack overflow (deeply nested messages)
+
+Corpus Size Expectations:
+  - Identify messages: ~500-1000 seeds
+  - Noise handshake: ~1000-2000 seeds (crypto complexity)
+  - TLS certs: ~200-500 seeds (mostly generated)
+  - Keys: ~500-1000 seeds per type
+  - Records/Envelopes: ~500-1000 seeds
+
+Fuzzing Duration:
+  - Initial: 24-48 hour runs
+  - Continuous: Integrate into CI with 1-hour baseline
+  - Weekly deep runs: 1-week fuzzing campaigns
+
+================================================================================
+SETUP CHECKLIST
+================================================================================
+
+[ ] Create fuzz test files in appropriate directories
+[ ] Import required packages (testing, proto, google.golang.org/protobuf)
+[ ] Add go:build gofuzz build tag if needed
+[ ] Create test corpora (corpus/ subdirectories)
+[ ] Set up CI integration for continuous fuzzing
+[ ] Create seed files for each fuzz target
+[ ] Document expected inputs/constraints
+[ ] Set coverage goals and thresholds
+[ ] Plan for corpus maintenance and triage
+
+================================================================================
